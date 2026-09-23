@@ -8,24 +8,27 @@ Các lệnh cần dùng khi deploy và kiểm tra hạ tầng development.
 - `kubectl`
 - Kustomize support trong `kubectl`
 
+## Install K3s
+
+```bash
+curl -sfL https://get.k3s.io | sh -
+```
+
 ## Validate
 
-```powershell
-.\scripts\validate.ps1
+```bash
+kubectl kustomize kubernetes/overlays/dev >/dev/null
 ```
 
 ## Deploy
 
-```powershell
-.\scripts\bootstrap-dev.ps1
-```
-
-Hoặc deploy thủ công:
-
-```powershell
+```bash
 kubectl apply -k kubernetes/base/platform
-kubectl -n flash-sale-data create secret generic flash-sale-infra-credentials `
-  --from-literal=POSTGRES_PASSWORD=<password>
+kubectl -n flash-sale-infra create secret generic flash-sale-infra-credentials \
+  --from-literal=POSTGRES_SUPERUSER_PASSWORD=<password> \
+  --from-literal=IDENTITY_DB_PASSWORD=<password> \
+  --from-literal=INVENTORY_DB_PASSWORD=<password> \
+  --from-literal=FILE_DB_PASSWORD=<password>
 kubectl apply -k kubernetes/overlays/dev
 ```
 
@@ -78,4 +81,3 @@ kubectl delete -k kubernetes/overlays/dev
 ```
 
 PVC deletion removes development data and must be executed manually.
-

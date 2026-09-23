@@ -23,37 +23,29 @@ Kubernetes manifests cho môi trường development của hệ thống Flash Sal
 │   │   ├── platform/
 │   │   └── infra/
 │   └── overlays/dev/
-├── scripts/
-│   ├── validate.ps1
-│   └── bootstrap-dev.ps1
 ├── docs/
 └── terraform/
 ```
 
 ## Commands
 
-Validate manifests:
+Install K3s on Ubuntu:
 
-```powershell
-.\scripts\validate.ps1
+```bash
+curl -sfL https://get.k3s.io | sh -
 ```
 
-Deploy dev environment:
+Validate and deploy manifests:
 
-```powershell
-.\scripts\bootstrap-dev.ps1
-```
-
-Deploy manually:
-
-```powershell
+```bash
+kubectl kustomize kubernetes/overlays/dev >/dev/null
 kubectl apply -k kubernetes/base/platform
 kubectl apply -k kubernetes/overlays/dev
 ```
 
 Check status:
 
-```powershell
+```bash
 kubectl get pods,pvc -A
 ```
 
