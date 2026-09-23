@@ -1,0 +1,14 @@
+.idea/
+.vscode/
+.DS_Store
+*.log
+*.tmp
+rendered/
+terraform/**/.terraform/
+terraform/**/*.tfstate
+terraform/**/*.tfstate.*
+terraform/**/*.tfvars
+!terraform/**/*.tfvars.example
+secrets/
+*.secret.yaml
+

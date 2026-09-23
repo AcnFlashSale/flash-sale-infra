@@ -1,0 +1,144 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: localstack
+spec:
+  selector:
+    app.kubernetes.io/name: localstack
+  ports:
+    - name: edge
+      port: 4566
+      targetPort: edge
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: localstack
+spec:
+  serviceName: localstack
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: localstack
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: localstack
+    spec:
+      terminationGracePeriodSeconds: 20
+      containers:
+        - name: localstack
+          image: localstack/localstack:4.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: edge
+              containerPort: 4566
+          env:
+            - name: SERVICES
+              value: s3
+            - name: AWS_DEFAULT_REGION
+              value: ap-southeast-1
+            - name: AWS_ACCESS_KEY_ID
+              value: test
+            - name: AWS_SECRET_ACCESS_KEY
+              value: test
+            - name: PERSISTENCE
+              value: "1"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /_localstack/health
+              port: edge
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 18
+          livenessProbe:
+            tcpSocket:
+              port: edge
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/localstack
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: localstack-init
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: localstack-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: localstack/localstack:4.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: AWS_DEFAULT_REGION
+              value: ap-southeast-1
+            - name: AWS_ACCESS_KEY_ID
+              value: test
+            - name: AWS_SECRET_ACCESS_KEY
+              value: test
+          command:
+            - bash
+            - -ec
+            - |
+              endpoint="http://localstack.flash-sale-infra.svc.cluster.local:4566"
+              until awslocal --endpoint-url="$endpoint" s3api list-buckets >/dev/null 2>&1; do sleep 3; done
+              awslocal --endpoint-url="$endpoint" s3 mb s3://flash-sale-files-dev || true
+              cat >/tmp/cors.json <<'JSON'
+              {
+                "CORSRules": [
+                  {
+                    "AllowedHeaders": ["*"],
+                    "AllowedMethods": ["GET", "HEAD", "PUT"],
+                    "AllowedOrigins": [
+                      "http://localhost:8080",
+                      "http://localhost:8081",
+                      "https://buyer.dev.flash-sale.local",
+                      "https://seller.dev.flash-sale.local"
+                    ],
+                    "ExposeHeaders": ["ETag"],
+                    "MaxAgeSeconds": 3000
+                  }
+                ]
+              }
+              JSON
+              awslocal --endpoint-url="$endpoint" s3api put-bucket-cors --bucket flash-sale-files-dev --cors-configuration file:///tmp/cors.json
+              cat >/tmp/policy.json <<'JSON'
+              {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Sid": "AllowPublicReadForDevProductImages",
+                    "Effect": "Allow",
+                    "Principal": "*",
+                    "Action": "s3:GetObject",
+                    "Resource": "arn:aws:s3:::flash-sale-files-dev/*"
+                  }
+                ]
+              }
+              JSON
+              awslocal --endpoint-url="$endpoint" s3api put-bucket-policy --bucket flash-sale-files-dev --policy file:///tmp/policy.json
+
