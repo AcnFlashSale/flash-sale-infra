@@ -1,61 +1,81 @@
-# Development runbook
+# Development Runbook
 
-## Kiểm tra nhanh
+Các lệnh cần dùng khi deploy và kiểm tra hạ tầng development.
 
-```powershell
-kubectl get pods,pvc -n flash-sale-infra
-kubectl get jobs -n flash-sale-infra
-kubectl get events -n flash-sale-infra --sort-by=.metadata.creationTimestamp
-```
+## Prerequisites
 
-Pod hợp lệ phải ở trạng thái `Running` và các init job phải `Complete`.
+- Kubernetes cluster có StorageClass mặc định
+- `kubectl`
+- Kustomize support trong `kubectl`
 
-## Xem log
+## Validate
 
 ```powershell
-kubectl logs -n flash-sale-infra statefulset/postgres
-kubectl logs -n flash-sale-infra statefulset/mongodb
-kubectl logs -n flash-sale-infra statefulset/kafka
-kubectl logs -n flash-sale-infra statefulset/elasticsearch
-kubectl logs -n flash-sale-infra deployment/kibana
+.\scripts\validate.ps1
 ```
 
-## Truy cập tạm thời từ máy local
+## Deploy
 
 ```powershell
-kubectl port-forward -n flash-sale-infra service/postgres 5432:5432
-kubectl port-forward -n flash-sale-infra service/mongodb 27017:27017
-kubectl port-forward -n flash-sale-infra service/redis 6379:6379
-kubectl port-forward -n flash-sale-infra service/kafka 9092:9092
-kubectl port-forward -n flash-sale-infra service/elasticsearch 9200:9200
-kubectl port-forward -n flash-sale-infra service/kibana 5601:5601
-kubectl port-forward -n flash-sale-infra service/localstack 4566:4566
+.\scripts\bootstrap-dev.ps1
 ```
 
-Kafka quảng bá Kubernetes DNS nội bộ nên client chạy ngoài cluster không thể sử dụng ổn định chỉ bằng port-forward. Khi cần local client kết nối Kafka, thêm listener riêng qua VPN/private ingress thay vì expose broker công khai.
-
-## Restart an toàn
+Hoặc deploy thủ công:
 
 ```powershell
-kubectl rollout restart -n flash-sale-infra statefulset/postgres
-kubectl rollout status -n flash-sale-infra statefulset/postgres --timeout=5m
+kubectl apply -k kubernetes/base/platform
+kubectl -n flash-sale-data create secret generic flash-sale-infra-credentials `
+  --from-literal=POSTGRES_PASSWORD=<password>
+kubectl apply -k kubernetes/overlays/dev
 ```
 
-Chỉ restart từng stateful workload. Không restart đồng thời tất cả khi đang điều tra lỗi.
-
-## Dung lượng
+## Status
 
 ```powershell
-kubectl get pvc -n flash-sale-infra
-kubectl exec -n flash-sale-infra postgres-0 -- df -h /var/lib/postgresql/data
-kubectl exec -n flash-sale-infra elasticsearch-0 -- df -h /usr/share/elasticsearch/data
+kubectl get pods,pvc -A
+kubectl get statefulset,deployment -A
+kubectl get jobs -A
 ```
 
-## Backup development
+## Logs
 
-Trước thay đổi lớn, tạo snapshot disk/VM. Với dữ liệu cần giữ, dùng backup logic (`pg_dump`, `mongodump`) ngoài snapshot volume. Chưa có automated backup trong base này.
+```powershell
+kubectl -n flash-sale-data logs statefulset/postgresql
+kubectl -n flash-sale-data logs statefulset/mongodb
+kubectl -n flash-sale-platform logs statefulset/kafka
+kubectl -n flash-sale-observability logs statefulset/elasticsearch
+```
 
-## Xóa môi trường
+## Local access
 
-Xóa namespace sẽ xóa workload và có thể xóa luôn PVC tùy storage provisioner. Đây là thao tác phá hủy dữ liệu, vì vậy repo không cung cấp script tự động. Kiểm tra và backup PVC trước khi thực hiện thủ công.
+```powershell
+kubectl -n flash-sale-data port-forward svc/postgresql 5432:5432
+kubectl -n flash-sale-data port-forward svc/mongodb 27017:27017
+kubectl -n flash-sale-data port-forward svc/redis 6379:6379
+kubectl -n flash-sale-platform port-forward svc/kafka 9092:9092
+kubectl -n flash-sale-platform port-forward svc/localstack 4566:4566
+kubectl -n flash-sale-observability port-forward svc/elasticsearch 9200:9200
+kubectl -n flash-sale-observability port-forward svc/kibana 5601:5601
+```
+
+## Common issues
+
+| Symptom | Check |
+|---|---|
+| Pod `Pending` | `kubectl describe pod <pod> -n <namespace>` and PVC/StorageClass |
+| `CrashLoopBackOff` | Container logs and Secret values |
+| MongoDB job failed | MongoDB pod readiness and replica-set status |
+| Kafka not ready | Kafka logs and PVC permissions |
+| Elasticsearch restart | Node memory and `vm.max_map_count` |
+| Service unreachable | Namespace, Service name and NetworkPolicy |
+
+## Cleanup
+
+Remove workloads but keep PVCs:
+
+```powershell
+kubectl delete -k kubernetes/overlays/dev
+```
+
+PVC deletion removes development data and must be executed manually.
 

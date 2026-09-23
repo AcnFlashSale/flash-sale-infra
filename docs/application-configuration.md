@@ -1,81 +1,58 @@
-# Cấu hình ứng dụng trong Kubernetes
+# Application Configuration
 
-Các giá trị dưới đây ánh xạ backend hiện tại sang Kubernetes service DNS.
+Biến môi trường để backend kết nối tới hạ tầng trong Kubernetes.
 
-## Shared environment
+## Shared configuration
 
-```dotenv
-NODE_ENV=development
-JWT_ISSUER=http://identity-service.flash-sale-dev.svc.cluster.local:3001
-JWT_AUDIENCE=flash-sale-api
-IDENTITY_JWKS_URL=http://identity-service.flash-sale-dev.svc.cluster.local:3001/.well-known/jwks.json
-INTERNAL_API_KEY=<kubernetes-secret>
-KAFKA_BROKERS=kafka.flash-sale-infra.svc.cluster.local:9092
-KAFKA_ENABLED=true
-REDIS_URL=redis://redis.flash-sale-infra.svc.cluster.local:6379
-ELASTICSEARCH_URL=http://elasticsearch.flash-sale-infra.svc.cluster.local:9200
-AWS_ACCESS_KEY_ID=test
-AWS_SECRET_ACCESS_KEY=test
+```env
+POSTGRES_HOST=postgresql.flash-sale-data.svc.cluster.local
+POSTGRES_PORT=5432
+
+MONGODB_HOST=mongodb.flash-sale-data.svc.cluster.local
+MONGODB_PORT=27017
+MONGODB_REPLICA_SET=rs0
+
+REDIS_HOST=redis.flash-sale-data.svc.cluster.local
+REDIS_PORT=6379
+
+KAFKA_BROKERS=kafka.flash-sale-platform.svc.cluster.local:9092
+
+ELASTICSEARCH_URL=http://elasticsearch.flash-sale-observability.svc.cluster.local:9200
+
+S3_ENDPOINT=http://localstack.flash-sale-platform.svc.cluster.local:4566
+S3_REGION=ap-southeast-1
+S3_FORCE_PATH_STYLE=true
 ```
 
-## Service-specific environment
+## PostgreSQL databases
 
-### Identity
+| Service | Database | User |
+|---|---|---|
+| Auth | `auth_db` | `auth_user` |
+| Product | `product_db` | `product_user` |
+| Inventory | `inventory_db` | `inventory_user` |
+| Order | `order_db` | `order_user` |
+| Payment | `payment_db` | `payment_user` |
 
-```dotenv
-PORT=3001
-DATABASE_URL=postgres://identity_app:<password>@postgres.flash-sale-infra.svc.cluster.local:5432/identity
+Password được lấy từ Secret `flash-sale-infra-credentials` trong namespace `flash-sale-data`.
+
+## MongoDB connection
+
+```env
+MONGODB_URI=mongodb://mongodb.flash-sale-data.svc.cluster.local:27017/<database>?replicaSet=rs0
 ```
 
-JWT private/public key phải được mount từ Kubernetes Secret, không bake vào image.
+## Local access
 
-### Product Catalog
+Các hostname nội bộ chỉ dùng được trong cluster. Khi chạy backend ở máy local, dùng `kubectl port-forward` và đổi host thành `localhost`.
 
-```dotenv
-PORT=3002
-MONGODB_URI=mongodb://mongodb-0.mongodb.flash-sale-infra.svc.cluster.local:27017/product_catalog?replicaSet=rs0&directConnection=true
-FILE_SERVICE_INTERNAL_URL=http://file-service.flash-sale-dev.svc.cluster.local:3005
+Ví dụ:
+
+```powershell
+kubectl -n flash-sale-data port-forward svc/postgresql 5432:5432
+kubectl -n flash-sale-platform port-forward svc/kafka 9092:9092
 ```
 
-### Search
+## Reference
 
-```dotenv
-PORT=3003
-INDEX_READ_ALIAS=products_read
-INDEX_WRITE_ALIAS=products_write
-KAFKA_CONSUMER_GROUP=search-service-v1
-```
-
-### Inventory
-
-```dotenv
-PORT=3004
-DATABASE_URL=postgres://inventory_app:<password>@postgres.flash-sale-infra.svc.cluster.local:5432/inventory
-PRODUCT_CATALOG_INTERNAL_URL=http://product-catalog-service.flash-sale-dev.svc.cluster.local:3002
-KAFKA_CONSUMER_GROUP=inventory-service-v1
-```
-
-### File
-
-```dotenv
-PORT=3005
-DATABASE_URL=postgres://file_app:<password>@postgres.flash-sale-infra.svc.cluster.local:5432/file
-STORAGE_BUCKET=flash-sale-files-dev
-STORAGE_REGION=ap-southeast-1
-STORAGE_ENDPOINT=http://localstack.flash-sale-infra.svc.cluster.local:4566
-STORAGE_FORCE_PATH_STYLE=true
-KAFKA_CONSUMER_GROUP=file-service-v1
-```
-
-`STORAGE_ENDPOINT` nội bộ không phù hợp làm hostname trong pre-signed URL gửi cho browser. Trước khi tích hợp upload từ frontend, phải expose LocalStack qua HTTPS và cấu hình endpoint/CDN URL theo domain mà browser truy cập được.
-
-## Database users
-
-PostgreSQL init script tạo ba database và ba application user:
-
-- `identity_app` → database `identity`
-- `inventory_app` → database `inventory`
-- `file_app` → database `file`
-
-Password được đọc từ secret `flash-sale-infra-credentials`. Overlay production phải thay bằng secret manager hoặc External Secrets.
-
+- [Kubernetes Secrets](https://kubernetes.io/docs/concepts/configuration/secret/)
