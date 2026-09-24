@@ -3,6 +3,7 @@ kind: Service
 metadata:
   name: kafka
 spec:
+  publishNotReadyAddresses: true
   selector:
     app.kubernetes.io/name: kafka
   ports:
@@ -121,4 +122,3 @@ spec:
               for topic in product.events inventory.commands inventory.events payment.commands payment.events order.events; do
                 /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$broker" --create --if-not-exists --topic "$topic" --partitions 3 --replication-factor 1
               done
-

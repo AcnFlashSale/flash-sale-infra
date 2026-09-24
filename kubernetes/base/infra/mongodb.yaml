@@ -30,7 +30,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: mongodb
-          image: mongo:8.0
+          image: mongo:7.0.37
           imagePullPolicy: IfNotPresent
           args: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
           ports:
@@ -73,6 +73,8 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: mongodb-init
+  annotations:
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
 spec:
   backoffLimit: 10
   template:
@@ -83,7 +85,8 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: init
-          image: mongo:8.0
+          # Keep the client image aligned with the server image.
+          image: mongo:7.0.37
           imagePullPolicy: IfNotPresent
           command:
             - bash
@@ -100,4 +103,3 @@ spec:
                   })
                 }
               '
-
